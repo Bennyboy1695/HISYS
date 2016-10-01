@@ -10,6 +10,7 @@ import org.spongepowered.api.event.cause.Cause;
 import org.spongepowered.api.event.cause.NamedCause;
 import org.spongepowered.api.event.entity.DestructEntityEvent;
 import org.spongepowered.api.event.filter.Getter;
+import org.spongepowered.api.item.inventory.ItemStack;
 import org.spongepowered.api.item.inventory.transaction.InventoryTransactionResult;
 import org.spongepowered.api.item.inventory.type.TileEntityInventory;
 import org.spongepowered.api.plugin.Plugin;
@@ -29,7 +30,7 @@ public class HISYS {
 
     public static final String pluginID = "hisys";
     public static final String pluginName = "Hey I Saved Your Stuff";
-    public static final String pluginVersion = "1.0.0";
+    public static final String pluginVersion = "1.0.1";
     public static final String pluginDescription = pluginName + " is a plugin which allows players to much more easily recover their items on death" +
             " by spawning a chest containing their items when they die";
 
@@ -38,12 +39,12 @@ public class HISYS {
 
     @Listener
     public void onDeath(DestructEntityEvent.Death event, @Getter("getTargetEntity") Player player) {
-        if (player.getInventory().isEmpty())
+        if (player.getInventory().size() == 0)
             return;
 
         Location<World> location = player.getLocation();
         BlockState state = BlockState.builder().blockType(BlockTypes.CHEST).build();
-        location.setBlock(state, Cause.of(NamedCause.owner(container)));
+        location.setBlock(state, Cause.of(NamedCause.owner(container), NamedCause.source(player)));
 
         if (!location.getTileEntity().isPresent())
             return;
@@ -51,15 +52,16 @@ public class HISYS {
         chest.offer(Keys.DISPLAY_NAME, Text.of(player.getName() + "'s Stuff"));
 
         Location<World> newLocation = location.add(Direction.SOUTH.asBlockOffset());
-        newLocation.setBlock(state, Cause.of(NamedCause.owner(container)));
+        newLocation.setBlock(state, Cause.of(NamedCause.owner(container), NamedCause.source(player)));
 
         player.getInventory().slots().forEach(slot -> {
             if (slot.peek().isPresent()) {
+                ItemStack stack = slot.poll().orElse(null);
                 TileEntityInventory inventory = (TileEntityInventory) chest;
 
-                if (inventory.offer(slot.peek().get()).getType() != InventoryTransactionResult.Type.SUCCESS) {
+                if (inventory.offer(stack).getType() != InventoryTransactionResult.Type.SUCCESS) {
                     inventory = (TileEntityInventory) newLocation.getTileEntity().get();
-                    inventory.offer(slot.peek().get());
+                    inventory.offer(stack);
                 }
             }
         });

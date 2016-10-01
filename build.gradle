@@ -4,11 +4,13 @@ plugins {
 }
 
 group = 'com.rysingdragon'
-version = '1.0.0'
+version = '1.0.1'
 archivesBaseName = 'HISYS'
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
+
+def spongeVersion = '5.0.0'
 
 spongestart{
     eula = true
@@ -26,4 +28,8 @@ repositories {
 
 dependencies {
     compile 'org.spongepowered:spongeapi:5.0.0-SNAPSHOT'
+}
+
+jar {
+    version = "${spongeVersion}-${project.version}"
 }
