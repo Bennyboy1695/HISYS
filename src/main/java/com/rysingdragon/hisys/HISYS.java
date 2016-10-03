@@ -1,91 +1,64 @@
 package com.rysingdragon.hisys;
 
-import org.spongepowered.api.block.BlockState;
-import org.spongepowered.api.block.BlockTypes;
-import org.spongepowered.api.block.tileentity.TileEntity;
+import com.rysingdragon.hisys.data.DeathChestData;
+import com.rysingdragon.hisys.data.DeathChestDataBuilder;
+import com.rysingdragon.hisys.data.ImmutableDeathChestData;
+import com.rysingdragon.hisys.listeners.BlockListener;
+import com.rysingdragon.hisys.listeners.PlayerDeathListener;
+
+import org.spongepowered.api.Sponge;
 import org.spongepowered.api.config.ConfigDir;
-import org.spongepowered.api.data.key.Keys;
-import org.spongepowered.api.entity.living.player.Player;
 import org.spongepowered.api.event.Listener;
-import org.spongepowered.api.event.cause.Cause;
-import org.spongepowered.api.event.cause.NamedCause;
-import org.spongepowered.api.event.entity.DestructEntityEvent;
-import org.spongepowered.api.event.filter.Getter;
+import org.spongepowered.api.event.game.state.GameInitializationEvent;
 import org.spongepowered.api.event.game.state.GamePreInitializationEvent;
 import org.spongepowered.api.event.world.LoadWorldEvent;
-import org.spongepowered.api.item.inventory.ItemStack;
-import org.spongepowered.api.item.inventory.transaction.InventoryTransactionResult;
-import org.spongepowered.api.item.inventory.type.TileEntityInventory;
 import org.spongepowered.api.plugin.Plugin;
 import org.spongepowered.api.plugin.PluginContainer;
-import org.spongepowered.api.text.Text;
-import org.spongepowered.api.util.Direction;
-import org.spongepowered.api.world.Location;
-import org.spongepowered.api.world.World;
 
 import java.nio.file.Path;
 
 import com.google.inject.Inject;
 import ninja.leaping.configurate.commented.CommentedConfigurationNode;
 import ninja.leaping.configurate.hocon.HoconConfigurationLoader;
+import org.slf4j.Logger;
 
-@Plugin(id = HISYS.pluginID,
-        name = HISYS.pluginName,
-        version = HISYS.pluginVersion,
-        description = HISYS.pluginDescription)
+@Plugin(id = HISYS.PLUGIN_ID,
+        name = HISYS.PLUGIN_NAME,
+        version = HISYS.PLUGIN_VERSION,
+        description = HISYS.PLUGIN_DESCRIPTION)
 public class HISYS {
 
-    public static final String pluginID = "hisys";
-    public static final String pluginName = "Hey I Saved Your Stuff";
-    public static final String pluginVersion = "1.0.1";
-    public static final String pluginDescription = pluginName + " is a plugin which allows players to much more easily recover their items on death" +
+    public static final String PLUGIN_ID = "hisys";
+    public static final String PLUGIN_NAME = "Hey I Saved Your Stuff";
+    public static final String PLUGIN_VERSION = "1.1.0";
+    public static final String PLUGIN_DESCRIPTION = PLUGIN_NAME + " is a plugin which allows players to much more easily recover their items on death" +
             " by spawning a chest containing their items when they die";
 
+    public static HISYS INSTANCE;
+
     @Inject
-    private PluginContainer container;
+    private PluginContainer PLUGIN_CONTAINER;
+
+    @Inject
+    private Logger logger;
 
     @Inject
     @ConfigDir(sharedRoot = false)
     private Path configDirectory;
-    private Config generalConfig;
+    private static Config generalConfig;
 
     @Listener
     public void onPreInit(GamePreInitializationEvent event) {
-        HoconConfigurationLoader loader = HoconConfigurationLoader.builder().setPath(configDirectory.resolve(pluginID + ".conf")).build();
-        this.generalConfig = new Config(configDirectory.resolve(pluginID + ".conf"), loader);
+        INSTANCE = this;
+        HoconConfigurationLoader loader = HoconConfigurationLoader.builder().setPath(configDirectory.resolve(PLUGIN_ID + ".conf")).build();
+        generalConfig = new Config(configDirectory.resolve(PLUGIN_ID + ".conf"), loader);
     }
 
     @Listener
-    public void onDeath(DestructEntityEvent.Death event, @Getter("getTargetEntity") Player player) {
-        if (!this.generalConfig.getNode().getNode("Worlds", player.getWorld().getUniqueId().toString(), "Enabled").getBoolean(true))
-            return;
-
-        if (player.getInventory().size() == 0)
-            return;
-
-        BlockState state = BlockState.builder().blockType(BlockTypes.CHEST).build();
-        Location<World> location = player.getLocation();
-        Location<World> newLocation = location.add(Direction.SOUTH.asBlockOffset());
-
-        location.setBlock(state, Cause.of(NamedCause.owner(container), NamedCause.source(player)));
-        newLocation.setBlock(state, Cause.of(NamedCause.owner(container), NamedCause.source(player)));
-
-        if (!location.getTileEntity().isPresent())
-            return;
-        TileEntity chest = location.getTileEntity().get();
-        chest.offer(Keys.DISPLAY_NAME, Text.of(player.getName() + "'s Stuff"));
-
-        player.getInventory().slots().forEach(slot -> {
-            if (slot.peek().isPresent()) {
-                ItemStack stack = slot.poll().orElse(null);
-                TileEntityInventory inventory = (TileEntityInventory) chest;
-
-                if (inventory.offer(stack).getType() != InventoryTransactionResult.Type.SUCCESS) {
-                    inventory = (TileEntityInventory) newLocation.getTileEntity().get();
-                    inventory.offer(stack);
-                }
-            }
-        });
+    public void onInit(GameInitializationEvent event) {
+        Sponge.getDataManager().register(DeathChestData.class, ImmutableDeathChestData.class, new DeathChestDataBuilder());
+        Sponge.getEventManager().registerListeners(this, new PlayerDeathListener());
+        Sponge.getEventManager().registerListeners(this, new BlockListener());
     }
 
     @Listener
@@ -94,5 +67,17 @@ public class HISYS {
         root.getNode("Worlds", event.getTargetWorld().getUniqueId().toString(), "Enabled").setValue(true).setComment("Whether or not deathchests are able to be created in this world");
         root.getNode("Worlds", event.getTargetWorld().getUniqueId().toString()).setComment("Name: " + event.getTargetWorld().getName());
         generalConfig.save();
+    }
+
+    public static Config getGeneralConfig() {
+        return generalConfig;
+    }
+
+    public static Logger getLogger() {
+        return INSTANCE.logger;
+    }
+
+    public static PluginContainer getPluginContainer() {
+        return INSTANCE.PLUGIN_CONTAINER;
     }
 }
